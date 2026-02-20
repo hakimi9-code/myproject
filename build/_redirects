@@ -1,0 +1,11 @@
+# Netlify redirect configuration for React Router
+# This ensures all routes are handled by index.html for client-side routing
+# Format: <source-path> <destination-path> <status-code>
+
+# Catch-all rule for React Router
+/* /index.html 200
+
+# Optional: You can also specify specific rewrites
+# /cart /index.html 200
+# /checkout-success /index.html 200
+
