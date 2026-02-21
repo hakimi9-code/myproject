@@ -5,7 +5,7 @@ import { formatPrice } from '../data/products';
 import toast from "react-hot-toast";
 import './Cart.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const Cart = () => {
   const { cart, updateQuantity, removeFromCart, cartTotal, clearCart } = useStore();
