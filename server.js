@@ -11,6 +11,9 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'ecommerce',
   password: process.env.DB_PASSWORD || 'postgres',
   port: process.env.DB_PORT || 5432,
+  ssl: process.env.DATABASE_URL ? {
+    rejectUnauthorized: false
+  } : false
 });
 
 // Test Database Connection (fire and forget - continues even if fails)
