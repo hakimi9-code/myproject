@@ -5,7 +5,7 @@ import { formatPrice } from '../data/products';
 import toast from "react-hot-toast";
 import './Cart.css';
 
-const API_URL = process.env.REACT_APP_API_URL || '';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const Cart = () => {
   const { cart, updateQuantity, removeFromCart, cartTotal, clearCart } = useStore();
@@ -43,6 +43,13 @@ const Cart = () => {
           paymentMethod
         })
       });
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Server error: ${text.substring(0, 100)}...`);
+      }
 
       const data = await response.json();
 

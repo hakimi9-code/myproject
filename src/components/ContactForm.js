@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './ContactForm.css';
 
-const API_URL = process.env.REACT_APP_API_URL || '';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const ContactForm = () => {
   const [formData, setFormData] = useState({
@@ -36,6 +36,13 @@ const ContactForm = () => {
         },
         body: JSON.stringify(formData),
       });
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Server error: ${text.substring(0, 100)}...`);
+      }
 
       const data = await response.json();
 
