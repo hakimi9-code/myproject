@@ -14,25 +14,24 @@ function Admin() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const { toasts, showToast, removeToast } = useToast();
   const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
 
+  // Focus close button when dialog opens
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && selectedOrder) {
-        setSelectedOrder(null);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    if (selectedOrder && closeButtonRef.current) {
+      closeButtonRef.current.focus();
+    }
   }, [selectedOrder]);
 
+  // Handle dialog open/close
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog) {
-      if (selectedOrder) {
-        dialog.showModal();
-      } else {
-        dialog.close();
-      }
+    if (!dialog) return;
+
+    if (selectedOrder) {
+      dialog.showModal();
+    } else {
+      dialog.close();
     }
   }, [selectedOrder]);
 
@@ -101,6 +100,26 @@ function Admin() {
     return `$${Number.parseFloat(price).toFixed(2)}`;
   };
 
+  const handleDialogKeyDown = (e) => {
+    // Trap focus within dialog on Tab key
+    if (e.key === 'Tab') {
+      const focusableElements = dialogRef.current?.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusableElements?.length) {
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    }
+  };
+
   if (loading) return <LoadingSpinner message="Loading orders..." />;
   if (error) return <ErrorMessage message={error} onRetry={fetchOrders} />;
 
@@ -154,7 +173,7 @@ function Admin() {
           </div>
 
           <div className="orders-table-container">
-            <table className="orders-table">
+            <table className="orders-table" role="grid">
               <thead>
                 <tr>
                   <th scope="col">Order ID</th>
@@ -198,6 +217,7 @@ function Admin() {
                       <button 
                         className="action-btn view-btn"
                         onClick={() => setSelectedOrder(order)}
+                        aria-label={`View order #${order.id}`}
                       >
                         View
                       </button>
@@ -213,19 +233,25 @@ function Admin() {
               ref={dialogRef}
               className="order-detail-modal"
               aria-labelledby="order-modal-title"
+              aria-describedby="order-modal-description"
               onClick={(e) => {
                 if (e.target === e.currentTarget) setSelectedOrder(null);
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setSelectedOrder(null);
-              }}
+              onKeyDown={handleDialogKeyDown}
             >
               <div className="modal-header">
-                <h2>Order #{selectedOrder.id}</h2>
-                <button className="close-btn" onClick={() => setSelectedOrder(null)}>×</button>
+                <h2 id="order-modal-title">Order #{selectedOrder.id}</h2>
+                <button 
+                  ref={closeButtonRef}
+                  className="close-btn" 
+                  onClick={() => setSelectedOrder(null)}
+                  aria-label="Close order details"
+                >
+                  ×
+                </button>
               </div>
               
-              <div className="modal-body">
+              <div className="modal-body" id="order-modal-description">
                 <div className="order-info-grid">
                   <div className="info-section">
                     <h3>Customer Details</h3>
@@ -241,6 +267,7 @@ function Admin() {
                         value={selectedOrder.status}
                         onChange={(e) => updateOrderStatus(selectedOrder.id, e.target.value)}
                         className="status-select"
+                        aria-label="Order status"
                       >
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
