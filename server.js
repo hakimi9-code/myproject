@@ -4,17 +4,27 @@ const { path } = require('node:path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Create pool with default values - will handle connection errors gracefully
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'ecommerce',
-  password: process.env.DB_PASSWORD || 'postgres',
-  port: process.env.DB_PORT || 5432,
-  ssl: process.env.DATABASE_URL ? {
-    rejectUnauthorized: false
-  } : false
-});
+// Create pool with DATABASE_URL support
+let pool;
+if (process.env.DATABASE_URL) {
+  // Use DATABASE_URL for cloud services like Neon, Railway, etc.
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+} else {
+  // Use individual environment variables for local development
+  pool = new Pool({
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: process.env.DB_NAME || 'ecommerce',
+    password: process.env.DB_PASSWORD || 'postgres',
+    port: process.env.DB_PORT || 5432,
+    ssl: false
+  });
+}
 
 // Test Database Connection (fire and forget - continues even if fails)
 pool.query('SELECT NOW()')
@@ -513,8 +523,79 @@ app.post('/api/orders/:id/pay', async (req, res) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+app.get('/api/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      database: 'connected',
+      time: result.rows[0]
+    });
+  } catch (error) {
+    res.json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      database: 'disconnected'
+    });
+  }
+});
+
+// Initialize database tables (run once to set up the database)
+app.post('/api/init-db', async (req, res) => {
+  try {
+    // Create orders table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_address TEXT NOT NULL,
+        total DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        payment_status VARCHAR(50) DEFAULT 'pending',
+        payment_method VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create order_items table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS order_items (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+        product_id INTEGER NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        product_price DECIMAL(10, 2) NOT NULL,
+        quantity INTEGER NOT NULL,
+        subtotal DECIMAL(10, 2) NOT NULL
+      )
+    `);
+    
+    // Create messages table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)`);
+    
+    res.json({ 
+      message: 'Database initialized successfully!',
+      tables: ['orders', 'order_items', 'messages']
+    });
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    res.status(500).json({ message: 'Failed to initialize database: ' + error.message });
+  }
 });
 
 // Contact Form - Save message to database
