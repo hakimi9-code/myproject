@@ -5,7 +5,18 @@ import { formatPrice } from '../data/products';
 import toast from "react-hot-toast";
 import './Cart.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use relative API URL in production, localhost in development
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  // In production (Vercel), use relative path; in development, use localhost
+  return window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000/api' 
+    : '/api';
+};
+
+const API_URL = getApiUrl();
 
 const Cart = () => {
   const { cart, updateQuantity, removeFromCart, cartTotal, clearCart } = useStore();

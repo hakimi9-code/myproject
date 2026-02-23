@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
 import './ContactForm.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use relative API URL in production, localhost in development
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  // In production (Vercel), use relative path; in development, use localhost
+  return window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000/api' 
+    : '/api';
+};
+
+const API_URL = getApiUrl();
 
 const ContactForm = () => {
   const [formData, setFormData] = useState({
