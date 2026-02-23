@@ -3,13 +3,20 @@ import './ContactForm.css';
 
 // Use relative API URL in production, localhost in development
 const getApiUrl = () => {
+  // Check if we're in production (not localhost)
+  const isProduction = window.location.hostname !== 'localhost';
+  
+  if (isProduction) {
+    // In production, use relative path (same domain)
+    return '/api';
+  }
+  
+  // In development, check for environment variable or use localhost
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL;
   }
-  // In production (Vercel), use relative path; in development, use localhost
-  return window.location.hostname === 'localhost' 
-    ? 'http://localhost:5000/api' 
-    : '/api';
+  
+  return 'http://localhost:5000/api';
 };
 
 const API_URL = getApiUrl();
