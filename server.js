@@ -643,7 +643,7 @@ app.post('/api/orders', async (req, res) => {
     
     for (const item of items) {
       await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal)
+        `INSERT INTO order_items (order_id, product_id, product_name, price, quantity, subtotal)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [order.id, item.id, item.name, item.price, item.quantity, item.price * item.quantity]
       );
@@ -750,8 +750,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
         o.total, o.status, o.payment_status, o.payment_method,
         o.created_at,
         oi.id as item_id, oi.product_id, oi.product_name, 
-        oi.product_price, oi.quantity, oi.subtotal
-      FROM orders o
+
       LEFT JOIN order_items oi ON o.id = oi.order_id
       ORDER BY o.created_at DESC, oi.id ASC
     `);
