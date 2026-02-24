@@ -12,6 +12,8 @@ import Home from './pages/Home';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
 import Admin from './pages/Admin';
+import AdminLogin from './pages/AdminLogin';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -40,7 +42,15 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/cart" element={<Cart />} />
               <Route path="/checkout-success" element={<Checkout />} />
-              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute>
+                    <Admin />
+                  </ProtectedRoute>
+                } 
+              />
             </Routes>
           </main>
           <footer className="footer">
