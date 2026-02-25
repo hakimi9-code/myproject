@@ -3,10 +3,20 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import './DashboardStats.css';
 
-// Use relative API URL in production, localhost in development
+// Use environment variable in production, localhost in development
 const getApiUrl = () => {
   const isProduction = window.location.hostname !== 'localhost';
-  if (isProduction) return '/api';
+  
+  if (isProduction) {
+    // Try environment variable first, then use hardcoded Render URL as fallback
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
+    }
+    // Fallback to Render backend
+    return 'https://hakimi-store.onrender.com';
+  }
+  
+  // Development
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
   return 'http://localhost:5000/api';
 };
