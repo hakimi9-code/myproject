@@ -750,6 +750,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
         o.total, o.status, o.payment_status, o.payment_method,
         o.created_at,
         oi.id as item_id, oi.product_id, oi.product_name, 
+        oi.price as product_price, oi.quantity, oi.subtotal
 
       LEFT JOIN order_items oi ON o.id = oi.order_id
       ORDER BY o.created_at DESC, oi.id ASC

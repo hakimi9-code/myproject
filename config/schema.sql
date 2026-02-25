@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
   product_id INTEGER NOT NULL,
   product_name VARCHAR(255) NOT NULL,
-  product_price DECIMAL(10, 2) NOT NULL,
+  price DECIMAL(10, 2) NOT NULL,
   quantity INTEGER NOT NULL,
   subtotal DECIMAL(10, 2) NOT NULL
 );
