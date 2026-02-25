@@ -7,7 +7,12 @@ import './AdminLogin.css';
 // Use relative API URL in production, localhost in development
 const getApiUrl = () => {
   const isProduction = window.location.hostname !== 'localhost';
-  if (isProduction) return '/api';
+  if (isProduction) {
+    if (process.env.REACT_APP_API_URL) {
+      return process.env.REACT_APP_API_URL;
+    }
+    return 'https://hakimi-store.onrender.com';
+  }
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
   return 'http://localhost:5000/api';
 };
