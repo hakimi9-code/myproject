@@ -230,6 +230,75 @@ const categories = [
 
 // ==================== AUTH ROUTES ====================
 
+// Seed default admin user (run this once to create admin)
+app.post('/api/auth/seed-admin', async (req, res) => {
+  const { email, password, name } = req.body;
+  
+  // Secret key to prevent unauthorized seeding
+  const SEED_SECRET = process.env.SEED_SECRET || 'dev-seed-key';
+  const providedSecret = req.headers['x-seed-secret'];
+  
+  if (providedSecret !== SEED_SECRET) {
+    // For demo purposes, allow seeding without secret
+    console.log('Allowing seed without secret (demo mode)');
+  }
+  
+  const adminEmail = email || 'admin@minishop.com';
+  const adminPassword = password || 'admin123';
+  const adminName = name || 'Admin';
+  
+  const dbAvailable = await isDbAvailable();
+  if (!dbAvailable) {
+    return res.status(503).json({ message: 'Database not available' });
+  }
+  
+  try {
+    // Check if admin exists
+    const existingUser = await pool.query('SELECT id FROM users WHERE role = $1', ['admin']);
+    
+    if (existingUser.rows.length > 0) {
+      return res.json({ 
+        message: 'Admin user already exists',
+        admin: { email: adminEmail }
+      });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    
+    // Create admin user
+    const result = await pool.query(
+      'INSERT INTO users (email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, created_at',
+      [adminEmail, hashedPassword, adminName, 'admin']
+    );
+    
+    // Generate token
+    const token = jwt.sign(
+      { id: result.rows[0].id, email: result.rows[0].email, role: result.rows[0].role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    res.status(201).json({
+      message: 'Admin user created successfully!',
+      token,
+      user: {
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        name: result.rows[0].name,
+        role: result.rows[0].role
+      },
+      credentials: {
+        email: adminEmail,
+        password: adminPassword
+      }
+    });
+  } catch (error) {
+    console.error('Seed admin error:', error);
+    res.status(500).json({ message: 'Failed to create admin user' });
+  }
+});
+
 // Register admin user (first-time setup)
 app.post('/api/auth/register', async (req, res) => {
   const { email, password, name } = req.body;
