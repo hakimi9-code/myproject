@@ -9,15 +9,20 @@ const getApiUrl = () => {
   
   if (isProduction) {
     // Try environment variable first, then use hardcoded Render URL as fallback
+    // Make sure to include /api suffix
     if (process.env.REACT_APP_API_URL) {
-      return process.env.REACT_APP_API_URL;
+      const url = process.env.REACT_APP_API_URL;
+      return url.endsWith('/api') ? url : `${url}/api`;
     }
     // Fallback to Render backend
-    return 'https://hakimi-store.onrender.com';
+    return 'https://hakimi-store.onrender.com/api';
   }
   
   // Development
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (process.env.REACT_APP_API_URL) {
+    const url = process.env.REACT_APP_API_URL;
+    return url.endsWith('/api') ? url : `${url}/api`;
+  }
   return 'http://localhost:5000/api';
 };
 
