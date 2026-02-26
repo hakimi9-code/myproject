@@ -13,7 +13,7 @@ const getApiUrl = () => {
       return process.env.REACT_APP_API_URL;
     }
     // Fallback to Render backend
-    return 'https://hakimi-store.onrender.com';
+    return '/api';
   }
   
   // Development

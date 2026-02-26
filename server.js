@@ -975,7 +975,7 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
     
     // Get sales by category
     const categoryResult = await pool.query(`
-      SELECT p.category, SUM(oi.subtotal) as total
+      SELECT p.category, COALESCE(SUM(oi.subtotal), 0) as total
       FROM order_items oi
       JOIN products p ON oi.product_id = p.id
       GROUP BY p.category
@@ -985,7 +985,7 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
     const monthlyResult = await pool.query(`
       SELECT 
         TO_CHAR(created_at, 'Mon') as month,
-        SUM(total) as sales
+        COALESCE(SUM(total), 0) as sales
       FROM orders
       WHERE created_at >= NOW() - INTERVAL '6 months'
       GROUP BY TO_CHAR(created_at, 'Mon'), EXTRACT(MONTH FROM created_at)

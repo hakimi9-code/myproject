@@ -19,7 +19,7 @@ const getApiUrl = () => {
       return url.endsWith('/api') ? url : `${url}/api`;
     }
     // Fallback to Render backend
-    return 'https://hakimi-store.onrender.com/api';
+    return '/api';
   }
   
   // Development
