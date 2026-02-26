@@ -1158,6 +1158,13 @@ app.post('/api/init-db', async (req, res) => {
       )
     `);
     
+    // Migration: Add product_category column if it doesn't exist
+    try {
+      await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_category VARCHAR(100)`);
+    } catch (e) {
+      // Column might already exist, ignore error
+    }
+    
     // Create messages table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -1261,6 +1268,13 @@ const initializeDatabase = async () => {
         subtotal DECIMAL(10, 2) NOT NULL
       )
     `);
+    
+    // Migration: Add product_category column if it doesn't exist
+    try {
+      await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_category VARCHAR(100)`);
+    } catch (e) {
+      // Column might already exist, ignore error
+    }
     
     // Create messages table
     await pool.query(`
