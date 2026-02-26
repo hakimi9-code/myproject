@@ -730,9 +730,9 @@ app.post('/api/orders', async (req, res) => {
     
     for (const item of items) {
       await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, price, quantity, subtotal)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [order.id, item.id, item.name, item.price, item.quantity, item.price * item.quantity]
+        `INSERT INTO order_items (order_id, product_id, product_name, product_category, price, quantity, subtotal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [order.id, item.id, item.name, item.category || 'Unknown', item.price, item.quantity, item.price * item.quantity]
       );
     }
     
@@ -973,12 +973,13 @@ app.get('/api/analytics', authenticateToken, async (req, res) => {
       'SELECT id, customer_name, total, status, created_at FROM orders ORDER BY created_at DESC LIMIT 5'
     );
     
-    // Get sales by category
+    // Get sales by category (use product_category from order_items)
     const categoryResult = await pool.query(`
-      SELECT p.category, COALESCE(SUM(oi.subtotal), 0) as total
-      FROM order_items oi
-      JOIN products p ON oi.product_id = p.id
-      GROUP BY p.category
+      SELECT 
+        COALESCE(product_category, 'Unknown') as category, 
+        COALESCE(SUM(subtotal), 0) as total
+      FROM order_items
+      GROUP BY product_category
     `);
     
     // Get monthly sales (last 6 months)
@@ -1143,13 +1144,14 @@ app.post('/api/init-db', async (req, res) => {
       )
     `);
     
-    // Create order_items table
+    // Create order_items table - store category directly for analytics
     await pool.query(`
       CREATE TABLE IF NOT EXISTS order_items (
         id SERIAL PRIMARY KEY,
         order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
         product_id INTEGER NOT NULL,
         product_name VARCHAR(255) NOT NULL,
+        product_category VARCHAR(100),
         product_price DECIMAL(10, 2) NOT NULL,
         quantity INTEGER NOT NULL,
         subtotal DECIMAL(10, 2) NOT NULL
@@ -1191,10 +1193,103 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`API available at http://localhost:${PORT}/api`);
+// Auto-initialize database tables on startup
+const initializeDatabase = async () => {
+  const dbAvailable = await isDbAvailable();
+  if (!dbAvailable) {
+    console.log('⚠️ Database not available - skipping initialization');
+    return;
+  }
+  
+  try {
+    // Create users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create products table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10, 2) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        image VARCHAR(500),
+        description TEXT,
+        rating DECIMAL(3, 2) DEFAULT 0,
+        reviews INTEGER DEFAULT 0,
+        in_stock BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create orders table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_address TEXT NOT NULL,
+        total DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        payment_status VARCHAR(50) DEFAULT 'pending',
+        payment_method VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create order_items table - store category directly for analytics
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS order_items (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+        product_id INTEGER NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        product_category VARCHAR(100),
+        product_price DECIMAL(10, 2) NOT NULL,
+        quantity INTEGER NOT NULL,
+        subtotal DECIMAL(10, 2) NOT NULL
+      )
+    `);
+    
+    // Create messages table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create indexes
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+    
+    console.log('✅ Database tables initialized');
+  } catch (error) {
+    console.error('❌ Database initialization error:', error.message);
+  }
+};
+
+// Initialize database and start server
+initializeDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`API available at http://localhost:${PORT}/api`);
+  });
 });
 
 module.exports = app;
