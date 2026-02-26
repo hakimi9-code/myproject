@@ -29,6 +29,7 @@ const upload = multer({ storage: storage });
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const SEED_SECRET = process.env.SEED_SECRET || 'change-this-to-a-strong-random-secret-in-production';
 
 // Create pool with DATABASE_URL support
 let pool;
@@ -83,6 +84,14 @@ const authenticateToken = (req, res, next) => {
     req.user = user;
     next();
   });
+};
+
+// Admin-only middleware - must be used after authenticateToken
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
 };
 
 // Check if database is available
@@ -230,17 +239,47 @@ const categories = [
 
 // ==================== AUTH ROUTES ====================
 
-// Seed default admin user (run this once to create admin)
+// Seed default admin user (DB Owner only - requires either valid admin JWT OR SEED_SECRET)
 app.post('/api/auth/seed-admin', async (req, res) => {
   const { email, password, name } = req.body;
   
-  // Secret key to prevent unauthorized seeding
-  const SEED_SECRET = process.env.SEED_SECRET || 'dev-seed-key';
+  // Check for SEED_SECRET in header (for initial setup or DB owner)
   const providedSecret = req.headers['x-seed-secret'];
   
-  if (providedSecret !== SEED_SECRET) {
-    // For demo purposes, allow seeding without secret
-    console.log('Allowing seed without secret (demo mode)');
+  // Check if request has valid admin token
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  let isAuthorizedAdmin = false;
+  let isSeedKeyValid = false;
+  
+  // Verify SEED_SECRET if provided
+  if (providedSecret === SEED_SECRET) {
+    isSeedKeyValid = true;
+  }
+  
+  // Verify admin JWT if provided
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.role === 'admin') {
+        isAuthorizedAdmin = true;
+      }
+    } catch (e) {
+      // Token invalid, continue without admin privileges
+    }
+  }
+  
+  // Deny access if neither valid admin nor valid seed key
+  if (!isAuthorizedAdmin && !isSeedKeyValid) {
+    const dbAvailable = await isDbAvailable();
+    if (!dbAvailable) {
+      // Demo mode - allow with warning
+      console.log('⚠️ Creating admin in demo mode without proper authorization');
+    } else {
+      return res.status(403).json({ 
+        message: 'Forbidden: Only database owner or existing admin can create admin users. Provide valid admin token or SEED_SECRET.' 
+      });
+    }
   }
   
   const adminEmail = email || 'admin@minishop.com';
@@ -249,7 +288,29 @@ app.post('/api/auth/seed-admin', async (req, res) => {
   
   const dbAvailable = await isDbAvailable();
   if (!dbAvailable) {
-    return res.status(503).json({ message: 'Database not available' });
+    // Demo mode - return demo admin credentials
+    const demoToken = jwt.sign(
+      { id: 1, email: adminEmail, role: 'admin', name: adminName },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    return res.status(201).json({
+      message: 'Admin created successfully (demo mode)',
+      token: demoToken,
+      user: {
+        id: 1,
+        email: adminEmail,
+        name: adminName,
+        role: 'admin'
+      },
+      credentials: {
+        email: adminEmail,
+        password: adminPassword
+      },
+      demo: true,
+      warning: 'Demo mode - use SEED_SECRET in production'
+    });
   }
   
   try {
@@ -299,7 +360,7 @@ app.post('/api/auth/seed-admin', async (req, res) => {
   }
 });
 
-// Register admin user (first-time setup)
+// Register new user (customers can register themselves)
 app.post('/api/auth/register', async (req, res) => {
   const { email, password, name } = req.body;
   
@@ -309,22 +370,22 @@ app.post('/api/auth/register', async (req, res) => {
   
   const dbAvailable = await isDbAvailable();
   
-  // If no database, allow registration in demo mode
+  // If no database, allow registration in demo mode (as regular user)
   if (!dbAvailable) {
     const demoToken = jwt.sign(
-      { id: 1, email: email, role: 'admin', name: name },
+      { id: Math.floor(Math.random() * 10000), email: email, role: 'user', name: name },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
     
     return res.status(201).json({
-      message: 'Admin registered successfully (demo mode)',
+      message: 'User registered successfully (demo mode)',
       token: demoToken,
       user: {
         id: 1,
         email: email,
         name: name,
-        role: 'admin'
+        role: 'user'  // Default role is 'user', not 'admin'
       },
       demo: true
     });
@@ -340,10 +401,11 @@ app.post('/api/auth/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create user
+    // Create user with 'user' role (not admin) - customers register themselves
+    // To create admin, use /api/auth/seed-admin (DB owner only)
     const result = await pool.query(
       'INSERT INTO users (email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, created_at',
-      [email, hashedPassword, name, 'admin']
+      [email, hashedPassword, name, 'user']  // Default role is 'user'
     );
     
     // Generate token
@@ -354,7 +416,7 @@ app.post('/api/auth/register', async (req, res) => {
     );
     
     res.status(201).json({
-      message: 'Admin registered successfully',
+      message: 'User registered successfully',
       token,
       user: {
         id: result.rows[0].id,
@@ -369,7 +431,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
+// Login - works for all users (admin and regular users)
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   
@@ -379,9 +441,13 @@ app.post('/api/auth/login', async (req, res) => {
   
   const dbAvailable = await isDbAvailable();
   if (!dbAvailable) {
-    // Demo mode - accept any login
+    // Demo mode - accept any login based on email pattern
+    const isAdminEmail = email.toLowerCase().includes('admin');
+    const role = isAdminEmail ? 'admin' : 'user';
+    const demoName = isAdminEmail ? 'Demo Admin' : 'Demo User';
+    
     const token = jwt.sign(
-      { id: 1, email: 'demo@admin.com', role: 'admin', name: 'Demo Admin' },
+      { id: 1, email: email, role: role, name: demoName },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -391,9 +457,9 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: {
         id: 1,
-        email: 'demo@admin.com',
-        name: 'Demo Admin',
-        role: 'admin'
+        email: email,
+        name: demoName,
+        role: role
       },
       demo: true
     });
@@ -518,8 +584,8 @@ app.get('/api/products/:id', async (req, res) => {
   }
 });
 
-// Create product (protected)
-app.post('/api/products', authenticateToken, async (req, res) => {
+// Create product (admin only)
+app.post('/api/products', authenticateToken, requireAdmin, async (req, res) => {
   const { name, price, category, image, description, rating, reviews, in_stock } = req.body;
   
   if (!name || !price || !category) {
@@ -565,8 +631,8 @@ app.post('/api/products', authenticateToken, async (req, res) => {
   }
 });
 
-// Update product (protected)
-app.put('/api/products/:id', authenticateToken, async (req, res) => {
+// Update product (admin only)
+app.put('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { name, price, category, image, description, rating, reviews, in_stock } = req.body;
   
@@ -598,8 +664,8 @@ app.put('/api/products/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete product (protected)
-app.delete('/api/products/:id', authenticateToken, async (req, res) => {
+// Delete product (admin only)
+app.delete('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   
   const dbAvailable = await isDbAvailable();
@@ -655,8 +721,8 @@ app.get('/api/products/category/:category', async (req, res) => {
 
 // ==================== IMAGE UPLOAD ROUTE ====================
 
-// Upload image (protected)
-app.post('/api/upload', authenticateToken, upload.single('image'), (req, res) => {
+// Upload image (admin only)
+app.post('/api/upload', authenticateToken, requireAdmin, upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No image uploaded' });
   }
@@ -759,8 +825,8 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// Get all orders (with items) - Protected but works in demo mode
-app.get('/api/orders', authenticateToken, async (req, res) => {
+// Get all orders (with items) - Admin only
+app.get('/api/orders', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const dbAvailable = await isDbAvailable();
     
@@ -884,8 +950,8 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Update order status (protected)
-app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
+// Update order status (admin only)
+app.patch('/api/orders/:id/status', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   
@@ -924,8 +990,8 @@ app.patch('/api/orders/:id/status', authenticateToken, async (req, res) => {
 
 // ==================== ANALYTICS ROUTES ====================
 
-// Get dashboard analytics (protected)
-app.get('/api/analytics', authenticateToken, async (req, res) => {
+// Get dashboard analytics (admin only)
+app.get('/api/analytics', authenticateToken, requireAdmin, async (req, res) => {
   const dbAvailable = await isDbAvailable();
   
   if (!dbAvailable) {
@@ -1059,8 +1125,8 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
-// Get all messages (protected)
-app.get('/api/messages', authenticateToken, async (req, res) => {
+// Get all messages (admin only)
+app.get('/api/messages', authenticateToken, requireAdmin, async (req, res) => {
   const dbAvailable = await isDbAvailable();
   
   if (!dbAvailable) {
@@ -1104,8 +1170,8 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Initialize database tables
-app.post('/api/init-db', async (req, res) => {
+// Initialize database tables (admin only)
+app.post('/api/init-db', authenticateToken, requireAdmin, async (req, res) => {
   try {
     // Create users table
     await pool.query(`
